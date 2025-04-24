@@ -1,4 +1,5 @@
 # Description
+
 Npm like package manager created using Go.
 
 # Install
@@ -16,6 +17,8 @@ go run . install
 ```
 
 # Supported commands
+
 - init - for initialize package.json
 - install - install packages
 - add - install specific package
+- ci - install packages from package-lock.json

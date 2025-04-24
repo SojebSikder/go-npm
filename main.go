@@ -23,6 +23,17 @@ type PackageJSON struct {
 	Dependencies map[string]string `json:"dependencies"`
 }
 
+type PackageLock struct {
+	Name     string                      `json:"name"`
+	Version  string                      `json:"version"`
+	Lockfile map[string]LockedDependency `json:"dependencies"`
+}
+
+type LockedDependency struct {
+	Version  string `json:"version"`
+	Resolved string `json:"resolved"`
+}
+
 func LoadPackageJSON(path string) (*PackageJSON, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
@@ -37,6 +48,26 @@ func LoadPackageJSON(path string) (*PackageJSON, error) {
 
 func SavePackageJSON(path string, pkg *PackageJSON) error {
 	data, err := json.MarshalIndent(pkg, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0644)
+}
+
+func LoadPackageLock(path string) (*PackageLock, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var lock PackageLock
+	if err := json.Unmarshal(data, &lock); err != nil {
+		return nil, err
+	}
+	return &lock, nil
+}
+
+func SavePackageLock(path string, lock *PackageLock) error {
+	data, err := json.MarshalIndent(lock, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -118,23 +149,20 @@ func DownloadAndExtractTarball(url, dest string) error {
 	return nil
 }
 
-func InstallPackage(name, version string) error {
+func InstallPackage(name, version string, lock map[string]LockedDependency, force bool) error {
+	if !force {
+		if _, exists := lock[name]; exists {
+			return nil
+		}
+	}
+
 	fmt.Println("Installing", name, version)
 	meta, err := FetchPackageMeta(name)
 	if err != nil {
 		return err
 	}
 
-	// Handle version ranges using semver
 	if strings.HasPrefix(version, "^") || strings.HasPrefix(version, "~") || strings.Contains(version, ">") || strings.Contains(version, "<") {
-		if distTags, ok := meta["dist-tags"].(map[string]interface{}); ok {
-			if latest, ok := distTags["latest"].(string); ok {
-				fmt.Printf("Resolved %s@%s to latest: %s\n", name, version, latest)
-				version = latest
-			}
-		}
-
-		// Resolve version range
 		versions := meta["versions"].(map[string]interface{})
 		var validVersions []*semver.Version
 		for ver := range versions {
@@ -143,16 +171,14 @@ func InstallPackage(name, version string) error {
 				validVersions = append(validVersions, v)
 			}
 		}
-		// Sort versions and pick the best match
 		sort.Sort(semver.Collection(validVersions))
 		rangeConstraint, err := semver.NewConstraint(version)
 		if err != nil {
 			return err
 		}
-
-		for _, v := range validVersions {
-			if rangeConstraint.Check(v) {
-				version = v.String()
+		for i := len(validVersions) - 1; i >= 0; i-- {
+			if rangeConstraint.Check(validVersions[i]) {
+				version = validVersions[i].String()
 				break
 			}
 		}
@@ -168,10 +194,15 @@ func InstallPackage(name, version string) error {
 		return err
 	}
 
+	lock[name] = LockedDependency{
+		Version:  version,
+		Resolved: tarballURL,
+	}
+
 	verMeta := meta["versions"].(map[string]interface{})[version].(map[string]interface{})
 	if deps, ok := verMeta["dependencies"].(map[string]interface{}); ok {
 		for dep, ver := range deps {
-			if err := InstallPackage(dep, ver.(string)); err != nil {
+			if err := InstallPackage(dep, ver.(string), lock, force); err != nil {
 				return err
 			}
 		}
@@ -188,6 +219,12 @@ func runInstall(pkgPath string) {
 
 	os.MkdirAll("node_modules", 0755)
 
+	lock := &PackageLock{
+		Name:     pkg.Name,
+		Version:  pkg.Version,
+		Lockfile: make(map[string]LockedDependency),
+	}
+
 	var wg sync.WaitGroup
 	errs := make(chan error, len(pkg.Dependencies))
 
@@ -195,7 +232,7 @@ func runInstall(pkgPath string) {
 		wg.Add(1)
 		go func(dep, ver string) {
 			defer wg.Done()
-			if err := InstallPackage(dep, ver); err != nil {
+			if err := InstallPackage(dep, ver, lock.Lockfile, false); err != nil {
 				errs <- fmt.Errorf("error installing %s: %w", dep, err)
 			}
 		}(dep, ver)
@@ -211,16 +248,35 @@ func runInstall(pkgPath string) {
 		}
 	} else {
 		fmt.Println("All dependencies installed successfully!")
+		SavePackageLock("package-lock.json", lock)
 	}
 }
 
+func runCI() {
+	lock, err := LoadPackageLock("package-lock.json")
+	if err != nil {
+		fmt.Println("Error loading package-lock.json:", err)
+		return
+	}
+
+	os.RemoveAll("node_modules")
+	os.MkdirAll("node_modules", 0755)
+
+	for name, dep := range lock.Lockfile {
+		fmt.Println("Installing", name, dep.Version)
+		if err := InstallPackage(name, dep.Version, lock.Lockfile, true); err != nil {
+			fmt.Printf("Failed to install %s@%s: %v\n", name, dep.Version, err)
+			return
+		}
+	}
+
+	fmt.Println("Dependencies installed from package-lock.json")
+}
+
 func runInit() {
-	// get current directory name
 	dirName := ""
 	dir, err := os.Getwd()
 	if err != nil {
-		fmt.Println("Error getting current directory:", err)
-		fmt.Println("Setting default name to 'app'")
 		dirName = "app"
 	} else {
 		dirName = filepath.Base(dir)
@@ -253,6 +309,8 @@ func runAdd(args []string) {
 
 	os.MkdirAll("node_modules", 0755)
 
+	lock := make(map[string]LockedDependency)
+
 	for _, arg := range args {
 		var name, version string
 		parts := strings.SplitN(arg, "@", 2)
@@ -277,7 +335,7 @@ func runAdd(args []string) {
 			}
 		}
 
-		if err := InstallPackage(name, version); err != nil {
+		if err := InstallPackage(name, version, lock, false); err != nil {
 			fmt.Printf("Failed to install %s@%s: %v\n", name, version, err)
 			continue
 		}
@@ -288,9 +346,12 @@ func runAdd(args []string) {
 		pkg.Dependencies[name] = "^" + version
 	}
 
-	if err := SavePackageJSON("package.json", pkg); err != nil {
-		fmt.Println("Failed to update package.json:", err)
-	}
+	SavePackageJSON("package.json", pkg)
+	SavePackageLock("package-lock.json", &PackageLock{
+		Name:     pkg.Name,
+		Version:  pkg.Version,
+		Lockfile: lock,
+	})
 }
 
 func main() {
@@ -299,6 +360,7 @@ func main() {
 		fmt.Println("  go-npm install [--package path/to/package.json]")
 		fmt.Println("  go-npm init")
 		fmt.Println("  go-npm add <package[@version]> [...]")
+		fmt.Println("  go-npm ci")
 		return
 	}
 
@@ -313,8 +375,10 @@ func main() {
 		runInit()
 	case "add":
 		runAdd(os.Args[2:])
+	case "ci":
+		runCI()
 	default:
 		fmt.Printf("Unknown command: %s\n", cmd)
-		fmt.Println("Available commands: install, init, add")
+		fmt.Println("Available commands: install, init, add, ci")
 	}
 }
