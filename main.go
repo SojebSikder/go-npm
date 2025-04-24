@@ -18,15 +18,17 @@ import (
 )
 
 type PackageJSON struct {
-	Name         string            `json:"name"`
-	Version      string            `json:"version"`
-	Dependencies map[string]string `json:"dependencies"`
+	Name            string            `json:"name"`
+	Version         string            `json:"version"`
+	Dependencies    map[string]string `json:"dependencies"`
+	DevDependencies map[string]string `json:"devDependencies"`
 }
 
 type PackageLock struct {
 	Name     string                      `json:"name"`
 	Version  string                      `json:"version"`
 	Lockfile map[string]LockedDependency `json:"dependencies"`
+	DevLock  map[string]LockedDependency `json:"devDependencies"`
 }
 
 type LockedDependency struct {
@@ -223,20 +225,26 @@ func runInstall(pkgPath string) {
 		Name:     pkg.Name,
 		Version:  pkg.Version,
 		Lockfile: make(map[string]LockedDependency),
+		DevLock:  make(map[string]LockedDependency),
 	}
 
 	var wg sync.WaitGroup
-	errs := make(chan error, len(pkg.Dependencies))
+	errs := make(chan error, len(pkg.Dependencies)+len(pkg.DevDependencies))
 
-	for dep, ver := range pkg.Dependencies {
-		wg.Add(1)
-		go func(dep, ver string) {
-			defer wg.Done()
-			if err := InstallPackage(dep, ver, lock.Lockfile, false); err != nil {
-				errs <- fmt.Errorf("error installing %s: %w", dep, err)
-			}
-		}(dep, ver)
+	installSet := func(depMap map[string]string, lockMap map[string]LockedDependency) {
+		for dep, ver := range depMap {
+			wg.Add(1)
+			go func(dep, ver string) {
+				defer wg.Done()
+				if err := InstallPackage(dep, ver, lockMap, false); err != nil {
+					errs <- fmt.Errorf("error installing %s: %w", dep, err)
+				}
+			}(dep, ver)
+		}
 	}
+
+	installSet(pkg.Dependencies, lock.Lockfile)
+	installSet(pkg.DevDependencies, lock.DevLock)
 
 	wg.Wait()
 	close(errs)
@@ -269,8 +277,15 @@ func runCI() {
 			return
 		}
 	}
+	for name, dep := range lock.DevLock {
+		fmt.Println("Installing dev dependency", name, dep.Version)
+		if err := InstallPackage(name, dep.Version, lock.DevLock, true); err != nil {
+			fmt.Printf("Failed to install dev dependency %s@%s: %v\n", name, dep.Version, err)
+			return
+		}
+	}
 
-	fmt.Println("Dependencies installed from package-lock.json")
+	fmt.Println("Dependencies and devDependencies installed from package-lock.json")
 }
 
 func runInit() {
@@ -283,9 +298,10 @@ func runInit() {
 	}
 
 	defaultPkg := PackageJSON{
-		Name:         dirName,
-		Version:      "1.0.0",
-		Dependencies: map[string]string{},
+		Name:            dirName,
+		Version:         "1.0.0",
+		Dependencies:    map[string]string{},
+		DevDependencies: map[string]string{},
 	}
 
 	if err := SavePackageJSON("package.json", &defaultPkg); err != nil {
@@ -296,8 +312,13 @@ func runInit() {
 }
 
 func runAdd(args []string) {
-	if len(args) == 0 {
-		fmt.Println("Usage: go-npm add <package[@version]> [...]")
+	fs := flag.NewFlagSet("add", flag.ExitOnError)
+	isDev := fs.Bool("dev", false, "Add as devDependency")
+	fs.Parse(args)
+
+	pkgs := fs.Args()
+	if len(pkgs) == 0 {
+		fmt.Println("Usage: go-npm add [--dev] <package[@version]> [...]")
 		return
 	}
 
@@ -310,8 +331,9 @@ func runAdd(args []string) {
 	os.MkdirAll("node_modules", 0755)
 
 	lock := make(map[string]LockedDependency)
+	devLock := make(map[string]LockedDependency)
 
-	for _, arg := range args {
+	for _, arg := range pkgs {
 		var name, version string
 		parts := strings.SplitN(arg, "@", 2)
 		name = parts[0]
@@ -327,12 +349,17 @@ func runAdd(args []string) {
 				fmt.Printf("Error fetching %s: %v\n", name, err)
 				continue
 			}
-			if latest, ok := meta["dist-tags"].(map[string]interface{})["latest"].(string); ok {
-				version = latest
-			} else {
-				fmt.Printf("Could not determine latest version of %s\n", name)
+			distTags, ok := meta["dist-tags"].(map[string]interface{})
+			if !ok {
+				fmt.Printf("dist-tags not found for %s\n", name)
 				continue
 			}
+			latest, ok := distTags["latest"].(string)
+			if !ok {
+				fmt.Printf("latest tag not found for %s\n", name)
+				continue
+			}
+			version = latest
 		}
 
 		if err := InstallPackage(name, version, lock, false); err != nil {
@@ -340,10 +367,18 @@ func runAdd(args []string) {
 			continue
 		}
 
-		if pkg.Dependencies == nil {
-			pkg.Dependencies = map[string]string{}
+		if *isDev {
+			if pkg.DevDependencies == nil {
+				pkg.DevDependencies = map[string]string{}
+			}
+			pkg.DevDependencies[name] = "^" + version
+			devLock[name] = lock[name]
+		} else {
+			if pkg.Dependencies == nil {
+				pkg.Dependencies = map[string]string{}
+			}
+			pkg.Dependencies[name] = "^" + version
 		}
-		pkg.Dependencies[name] = "^" + version
 	}
 
 	SavePackageJSON("package.json", pkg)
@@ -351,6 +386,7 @@ func runAdd(args []string) {
 		Name:     pkg.Name,
 		Version:  pkg.Version,
 		Lockfile: lock,
+		DevLock:  devLock,
 	})
 }
 
@@ -359,7 +395,7 @@ func main() {
 		fmt.Println("Usage:")
 		fmt.Println("  go-npm install [--package path/to/package.json]")
 		fmt.Println("  go-npm init")
-		fmt.Println("  go-npm add <package[@version]> [...]")
+		fmt.Println("  go-npm add [--dev] <package[@version]> [...]")
 		fmt.Println("  go-npm ci")
 		return
 	}

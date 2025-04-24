@@ -18,7 +18,7 @@ go run . install
 
 # Supported commands
 
-- init - for initialize package.json
-- install - install packages
-- add - install specific package
-- ci - install packages from package-lock.json
+- `init` - for initialize package.json
+- `install` - install packages, also support `--dev` flag
+- `add` - install specific package
+- `ci` - install packages from package-lock.json
