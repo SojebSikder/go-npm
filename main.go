@@ -215,8 +215,19 @@ func runInstall(pkgPath string) {
 }
 
 func runInit() {
+	// get current directory name
+	dirName := ""
+	dir, err := os.Getwd()
+	if err != nil {
+		fmt.Println("Error getting current directory:", err)
+		fmt.Println("Setting default name to 'app'")
+		dirName = "app"
+	} else {
+		dirName = filepath.Base(dir)
+	}
+
 	defaultPkg := PackageJSON{
-		Name:         filepath.Base(filepath.Dir(".")),
+		Name:         dirName,
 		Version:      "1.0.0",
 		Dependencies: map[string]string{},
 	}
