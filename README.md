@@ -21,4 +21,5 @@ go run . install
 - `init` - for initialize package.json
 - `install` - install packages, also support `--dev` flag
 - `add` - install specific package
+- `remove` - remove specific package
 - `ci` - install packages from package-lock.json

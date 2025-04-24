@@ -390,12 +390,57 @@ func runAdd(args []string) {
 	})
 }
 
+func runRemove(args []string) {
+	if len(args) == 0 {
+		fmt.Println("Usage: go-npm remove <package> [...]")
+		return
+	}
+
+	pkg, err := LoadPackageJSON("package.json")
+	if err != nil {
+		fmt.Println("Error loading package.json:", err)
+		return
+	}
+
+	lock, _ := LoadPackageLock("package-lock.json")
+
+	changed := false
+	for _, name := range args {
+		if _, ok := pkg.Dependencies[name]; ok {
+			delete(pkg.Dependencies, name)
+			changed = true
+		}
+		if _, ok := pkg.DevDependencies[name]; ok {
+			delete(pkg.DevDependencies, name)
+			changed = true
+		}
+		if lock != nil {
+			delete(lock.Lockfile, name)
+			delete(lock.DevLock, name)
+		}
+		modPath := filepath.Join("node_modules", name)
+		if err := os.RemoveAll(modPath); err != nil {
+			fmt.Printf("Failed to remove %s from node_modules: %v\n", name, err)
+		} else {
+			fmt.Printf("Removed %s\n", name)
+		}
+	}
+
+	if changed {
+		SavePackageJSON("package.json", pkg)
+		if lock != nil {
+			SavePackageLock("package-lock.json", lock)
+		}
+	}
+}
+
 func main() {
 	if len(os.Args) < 2 {
 		fmt.Println("Usage:")
 		fmt.Println("  go-npm install [--package path/to/package.json]")
 		fmt.Println("  go-npm init")
 		fmt.Println("  go-npm add [--dev] <package[@version]> [...]")
+		fmt.Println("  go-npm remove <package> [...]")
 		fmt.Println("  go-npm ci")
 		return
 	}
@@ -411,10 +456,12 @@ func main() {
 		runInit()
 	case "add":
 		runAdd(os.Args[2:])
+	case "remove":
+		runRemove(os.Args[2:])
 	case "ci":
 		runCI()
 	default:
 		fmt.Printf("Unknown command: %s\n", cmd)
-		fmt.Println("Available commands: install, init, add, ci")
+		fmt.Println("Available commands: install, init, add, remove, ci")
 	}
 }
