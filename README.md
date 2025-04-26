@@ -23,3 +23,4 @@ go run . install
 - `add` - install specific package
 - `remove` - remove specific package
 - `ci` - install packages from package-lock.json
+- `run` - run custom scripts

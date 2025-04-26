@@ -9,7 +9,9 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"sync"
@@ -22,6 +24,7 @@ type PackageJSON struct {
 	Version         string            `json:"version"`
 	Dependencies    map[string]string `json:"dependencies"`
 	DevDependencies map[string]string `json:"devDependencies"`
+	Scripts         map[string]string `json:"scripts"`
 }
 
 type PackageLock struct {
@@ -443,6 +446,45 @@ func runRemove(args []string) {
 	}
 }
 
+func runScript(args []string) {
+
+	if len(args) == 0 {
+		fmt.Println("Usage: go-npm run <script>")
+		return
+	}
+
+	scriptName := args[0]
+	pkg, err := LoadPackageJSON("package.json")
+	if err != nil {
+		fmt.Println("Error loading package.json:", err)
+		return
+	}
+
+	command, ok := pkg.Scripts[scriptName]
+	if !ok {
+		fmt.Printf("Script \"%s\" not found in package.json\n", scriptName)
+		return
+	}
+
+	fmt.Printf("Running script \"%s\": %s\n", scriptName, command)
+
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		cmd = exec.Command("cmd", "/C", command)
+	} else {
+		cmd = exec.Command("sh", "-c", command)
+	}
+
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Stdin = os.Stdin
+
+	if err := cmd.Run(); err != nil {
+		fmt.Printf("Error running script \"%s\": %v\n", scriptName, err)
+	}
+
+}
+
 func main() {
 	if len(os.Args) < 2 {
 		fmt.Println("Usage:")
@@ -451,6 +493,7 @@ func main() {
 		fmt.Println("  go-npm add [--dev] <package[@version]> [...]")
 		fmt.Println("  go-npm remove <package> [...]")
 		fmt.Println("  go-npm ci")
+		fmt.Println("  go-npm run <script>")
 		return
 	}
 
@@ -469,8 +512,10 @@ func main() {
 		runRemove(os.Args[2:])
 	case "ci":
 		runCI()
+	case "run":
+		runScript(os.Args[2:])
 	default:
 		fmt.Printf("Unknown command: %s\n", cmd)
-		fmt.Println("Available commands: install, init, add, remove, ci")
+		fmt.Println("Available commands: install, init, add, remove, ci, run")
 	}
 }
