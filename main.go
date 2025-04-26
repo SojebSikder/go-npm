@@ -184,6 +184,15 @@ func InstallPackage(name, version string, lock map[string]LockedDependency, forc
 				break
 			}
 		}
+	} else {
+		// if version is a range, we need to install the latest version that satisfies the range
+		versions := meta["versions"].(map[string]interface{})
+		for ver := range versions {
+			if strings.HasPrefix(ver, version) {
+				version = ver
+				break
+			}
+		}
 	}
 
 	tarballURL, err := GetTarballURL(meta, version)
