@@ -187,6 +187,28 @@ func InstallPackage(name, version string, lock map[string]LockedDependency, forc
 				break
 			}
 		}
+	} else if strings.HasPrefix(version, "*") {
+		// if version is "*", we need to install the latest version
+		distTags, ok := meta["dist-tags"].(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("dist-tags not found for package %s", name)
+		}
+		latest, ok := distTags["latest"].(string)
+		if !ok {
+			return fmt.Errorf("latest tag not found for package %s", name)
+		}
+		version = latest
+	} else if version == "latest" {
+		// if version is "latest", we need to install the latest version
+		distTags, ok := meta["dist-tags"].(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("dist-tags not found for package %s", name)
+		}
+		latest, ok := distTags["latest"].(string)
+		if !ok {
+			return fmt.Errorf("latest tag not found for package %s", name)
+		}
+		version = latest
 	} else {
 		// if version is a range, we need to install the latest version that satisfies the range
 		versions := meta["versions"].(map[string]interface{})
