@@ -2,21 +2,21 @@
 
 Npm like package manager created using Go.
 
-# Install
+## Install
 
 Run
 
-```
+```bash
 go run . install
 ```
 
-# Build
+## Build
 
 ```
 ./build.sh
 ```
 
-# Supported commands
+## Supported commands
 
 - `init` - for initialize package.json
 - `install` - install packages, also support `--dev` flag
@@ -24,3 +24,11 @@ go run . install
 - `remove` - remove specific package
 - `ci` - install packages from package-lock.json
 - `run` - run custom scripts
+
+## Tests
+
+```bash
+go test ./...
+# with benchmark
+go test ./... -bench=.
+```

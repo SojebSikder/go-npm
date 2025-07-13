@@ -1,4 +1,4 @@
-module sojebsikder/go-npm
+module github.com/sojebsikder/go-npm
 
 go 1.24.1
 
