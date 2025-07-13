@@ -31,4 +31,6 @@ go run . install
 go test ./...
 # with benchmark
 go test ./... -bench=.
+# with coverage
+go test -cover ./...
 ```

@@ -10,7 +10,7 @@ import (
 )
 
 func TestRunInit(t *testing.T) {
-	tempDir := t.TempDir()
+	tempDir, _ := os.MkdirTemp("", "npm-test")
 	os.Chdir(tempDir)
 
 	cmd.RunInit()
