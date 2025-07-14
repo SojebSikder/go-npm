@@ -2,6 +2,7 @@ package pkg
 
 import (
 	"fmt"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -41,10 +42,7 @@ func InstallPackage(name, version string, lock map[string]LockedDependency, forc
 				break
 			}
 		}
-	} else if strings.HasPrefix(version, "*") {
-		distTags := meta["dist-tags"].(map[string]interface{})
-		version = distTags["latest"].(string)
-	} else if version == "latest" {
+	} else if strings.HasPrefix(version, "*") || version == "latest" {
 		distTags := meta["dist-tags"].(map[string]interface{})
 		version = distTags["latest"].(string)
 	} else {
@@ -62,7 +60,7 @@ func InstallPackage(name, version string, lock map[string]LockedDependency, forc
 		return err
 	}
 
-	dest := "node_modules/" + name
+	dest := filepath.Join("node_modules", name)
 	if err := DownloadAndExtractTarball(tarballURL, dest); err != nil {
 		return err
 	}
@@ -72,6 +70,10 @@ func InstallPackage(name, version string, lock map[string]LockedDependency, forc
 		Resolved: tarballURL,
 	}
 
+	// Create .bin executables
+	if err := CreateBinLinks(dest); err != nil {
+		return err
+	}
 	verMeta := meta["versions"].(map[string]interface{})[version].(map[string]interface{})
 	if deps, ok := verMeta["dependencies"].(map[string]interface{}); ok {
 		for dep, ver := range deps {
