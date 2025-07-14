@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"runtime"
+	"strings"
 
 	"github.com/sojebsikder/go-npm/pkg"
 )
@@ -16,6 +17,7 @@ func RunScript(args []string) {
 	}
 
 	scriptName := args[0]
+
 	pkgJSON, err := pkg.LoadPackageJSON("package.json")
 	if err != nil {
 		fmt.Println("Error loading package.json:", err)
@@ -41,7 +43,20 @@ func RunScript(args []string) {
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin
 
+	// Prepend local node_modules/.bin to PATH
+	pathEnv := os.Getenv("PATH")
+	localBinPath := "node_modules/.bin"
+	if runtime.GOOS == "windows" {
+		localBinPath = "node_modules\\.bin"
+		cmd.Env = append(os.Environ(), fmt.Sprintf("PATH=%s;%s", localBinPath, pathEnv))
+	} else {
+		cmd.Env = append(os.Environ(), fmt.Sprintf("PATH=%s:%s", localBinPath, pathEnv))
+	}
+
 	if err := cmd.Run(); err != nil {
+		if strings.Contains(err.Error(), "executable file not found") || strings.Contains(err.Error(), "file not found") {
+			fmt.Printf("Error: command not found. Make sure dependencies like \"%s\" are installed.\n", strings.Split(command, " ")[0])
+		}
 		fmt.Printf("Error running script \"%s\": %v\n", scriptName, err)
 	}
 }
