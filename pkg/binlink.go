@@ -54,9 +54,9 @@ func CreateBinLinks(pkgDir string) error {
 		if err != nil {
 			return err
 		}
-		relTarget = filepath.ToSlash(relTarget) // Ensure POSIX-style slashes
+		relTarget = filepath.ToSlash(relTarget)
 
-		// Remove any existing scripts
+		// Remove any existing scripts or links
 		os.Remove(binLink)
 		os.Remove(binLink + ".cmd")
 		os.Remove(binLink + ".ps1")
@@ -65,53 +65,58 @@ func CreateBinLinks(pkgDir string) error {
 			// Special case for nodemon
 			if binName == "nodemon" {
 				cmdContent := `@ECHO off
-		GOTO start
-		:find_dp0
-		SET dp0=%~dp0
-		EXIT /b
-		:start
-		SETLOCAL
-		CALL :find_dp0
-		
-		IF EXIST "%dp0%\node.exe" (
-		  SET "_prog=%dp0%\node.exe"
-		) ELSE (
-		  SET "_prog=node"
-		  SET PATHEXT=%PATHEXT:;.JS;=;%
-		)
-		
-		endLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & "%_prog%"  "%dp0%\..\nodemon\bin\nodemon.js" %*
-		`
+GOTO start
+:find_dp0
+SET dp0=%~dp0
+EXIT /b
+:start
+SETLOCAL
+CALL :find_dp0
+
+IF EXIST "%dp0%\node.exe" (
+  SET "_prog=%dp0%\node.exe"
+) ELSE (
+  SET "_prog=node"
+  SET PATHEXT=%PATHEXT:;.JS;=;%
+)
+
+endLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & "%_prog%"  "%dp0%\..\nodemon\bin\nodemon.js" %*
+`
 				if err := os.WriteFile(binLink+".cmd", []byte(cmdContent), 0755); err != nil {
 					return err
 				}
 			} else {
-				// General CMD wrapper
 				cmdContent := `@IF EXIST "%~dp0\node.exe" (
-		  "%~dp0\node.exe" "%~dp0\` + relTarget + `" %*
-		) ELSE (
-		  node "%~dp0\` + relTarget + `" %*
-		)
-		exit /b %ERRORLEVEL%
-		`
+  "%~dp0\node.exe" "%~dp0\` + relTarget + `" %*
+) ELSE (
+  node "%~dp0\` + relTarget + `" %*
+)
+exit /b %ERRORLEVEL%
+`
 				if err := os.WriteFile(binLink+".cmd", []byte(cmdContent), 0755); err != nil {
 					return err
 				}
 			}
 
-			// PowerShell wrapper (same for all binaries)
 			ps1Content := `if (Test-Path "$PSScriptRoot\node.exe") {
-		  & "$PSScriptRoot\node.exe" "$PSScriptRoot/` + relTarget + `" $args
-		} else {
-		  & node "$PSScriptRoot/` + relTarget + `" $args
-		}
-		exit $LASTEXITCODE
-		`
+  & "$PSScriptRoot\node.exe" "$PSScriptRoot/` + relTarget + `" $args
+} else {
+  & node "$PSScriptRoot/` + relTarget + `" $args
+}
+exit $LASTEXITCODE
+`
 			if err := os.WriteFile(binLink+".ps1", []byte(ps1Content), 0755); err != nil {
 				return err
 			}
+		} else {
+			if err := os.Symlink(relTarget, binLink); err != nil {
+				return err
+			}
+			// Ensure executable permission
+			if err := os.Chmod(fullBinPath, 0755); err != nil {
+				// non-critical, fallback silently
+			}
 		}
-
 	}
 
 	return nil
