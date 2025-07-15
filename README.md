@@ -2,13 +2,16 @@
 
 Npm like package manager created using Go.
 
-## Install
+## Features
 
-Run
-
-```bash
-go run . install
-```
+- Initialize a new project with `package.json`
+- Install dependencies and devDependencies
+- Add or remove specific packages
+- Lock dependencies with `package-lock.json`
+- Install from lock file for reproducible builds
+- Run custom scripts defined in `package.json`
+- Create executable links for package binaries in `node_modules/.bin`
+- Cross-platform support (Windows, Linux, macOS)
 
 ## Build
 
