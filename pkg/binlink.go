@@ -49,6 +49,11 @@ func CreateBinLinks(pkgDir string) error {
 		fullBinPath := filepath.Join(pkgDir, binRelPath)
 		binLink := filepath.Join(binDir, binName)
 
+		// ensure the subdirectory for the binary exists
+		if err := os.MkdirAll(filepath.Dir(binLink), 0755); err != nil {
+			return err
+		}
+
 		// Compute relative path from .bin to target script
 		relTarget, err := filepath.Rel(binDir, fullBinPath)
 		if err != nil {
