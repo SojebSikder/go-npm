@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,7 +13,7 @@ import (
 
 func FetchPackageMeta(name string) (map[string]interface{}, error) {
 	url := "https://registry.npmjs.org/" + name
-	resp, err := http.Get(url)
+	resp, err := HttpClient.Get(url)
 	if err != nil {
 		return nil, err
 	}
@@ -38,7 +37,7 @@ func GetTarballURL(meta map[string]interface{}, version string) (string, error) 
 }
 
 func DownloadAndExtractTarball(url, dest string) error {
-	resp, err := http.Get(url)
+	resp, err := HttpClient.Get(url)
 	if err != nil {
 		return err
 	}

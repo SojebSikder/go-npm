@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"path/filepath"
 	"sort"
-	"strings"
 
 	"github.com/Masterminds/semver/v3"
 )
@@ -22,38 +21,11 @@ func InstallPackage(name, version string, lock map[string]LockedDependency, forc
 		return err
 	}
 
-	if strings.HasPrefix(version, "^") || strings.HasPrefix(version, "~") || strings.Contains(version, ">") || strings.Contains(version, "<") {
-		versions := meta["versions"].(map[string]interface{})
-		var validVersions []*semver.Version
-		for ver := range versions {
-			v, err := semver.NewVersion(ver)
-			if err == nil {
-				validVersions = append(validVersions, v)
-			}
-		}
-		sort.Sort(semver.Collection(validVersions))
-		rangeConstraint, err := semver.NewConstraint(version)
-		if err != nil {
-			return err
-		}
-		for i := len(validVersions) - 1; i >= 0; i-- {
-			if rangeConstraint.Check(validVersions[i]) {
-				version = validVersions[i].String()
-				break
-			}
-		}
-	} else if strings.HasPrefix(version, "*") || version == "latest" {
-		distTags := meta["dist-tags"].(map[string]interface{})
-		version = distTags["latest"].(string)
-	} else {
-		versions := meta["versions"].(map[string]interface{})
-		for ver := range versions {
-			if strings.HasPrefix(ver, version) {
-				version = ver
-				break
-			}
-		}
+	resolvedVersion, err := resolveVersion(meta, version)
+	if err != nil {
+		return fmt.Errorf("error resolving %s@%s: %w", name, version, err)
 	}
+	version = resolvedVersion
 
 	tarballURL, err := GetTarballURL(meta, version)
 	if err != nil {
@@ -83,4 +55,41 @@ func InstallPackage(name, version string, lock map[string]LockedDependency, forc
 		}
 	}
 	return nil
+}
+
+func resolveVersion(meta map[string]interface{}, constraintStr string) (string, error) {
+	versionsMap := meta["versions"].(map[string]interface{})
+
+	// Handle "latest" or "*"
+	if constraintStr == "latest" || constraintStr == "*" || constraintStr == "" {
+		distTags := meta["dist-tags"].(map[string]interface{})
+		return distTags["latest"].(string), nil
+	}
+
+	// Try to parse as a constraint (handles ^, ~, >, <, and .x)
+	c, err := semver.NewConstraint(constraintStr)
+	if err == nil {
+		var validVersions []*semver.Version
+		for ver := range versionsMap {
+			v, err := semver.NewVersion(ver)
+			if err == nil {
+				validVersions = append(validVersions, v)
+			}
+		}
+		sort.Sort(semver.Collection(validVersions))
+
+		// Find the highest version that matches the constraint
+		for i := len(validVersions) - 1; i >= 0; i-- {
+			if c.Check(validVersions[i]) {
+				return validVersions[i].String(), nil
+			}
+		}
+	}
+
+	// Fallback: Exact match
+	if _, exists := versionsMap[constraintStr]; exists {
+		return constraintStr, nil
+	}
+
+	return "", fmt.Errorf("version %s not found", constraintStr)
 }
