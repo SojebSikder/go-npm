@@ -8,20 +8,33 @@ import (
 	"github.com/sojebsikder/go-npm/cmd"
 )
 
+const (
+	version = "0.1.0"
+	appName = "snpm"
+)
+
+func printUsage() {
+	fmt.Println("Usage:")
+	fmt.Printf("%s install [--package path/to/package.json] \n", appName)
+	fmt.Printf("%s init\n", appName)
+	fmt.Printf("%s add [--dev] <package[@version]> [...]\n", appName)
+	fmt.Printf("%s remove <package> [...] \n", appName)
+	fmt.Printf("%s ci\n", appName)
+	fmt.Printf("%s run <script>", appName)
+}
+
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Println("Usage:")
-		fmt.Println("  go-npm install [--package path/to/package.json]")
-		fmt.Println("  go-npm init")
-		fmt.Println("  go-npm add [--dev] <package[@version]> [...]")
-		fmt.Println("  go-npm remove <package> [...]")
-		fmt.Println("  go-npm ci")
-		fmt.Println("  go-npm run <script>")
+		printUsage()
 		return
 	}
 
 	cmdName := os.Args[1]
 	switch cmdName {
+	case "version":
+		fmt.Printf("%s v%s\n", appName, version)
+	case "help":
+		printUsage()
 	case "install":
 		fs := flag.NewFlagSet("install", flag.ExitOnError)
 		pkgPath := fs.String("package", "package.json", "Path to package.json")
