@@ -4,9 +4,12 @@ import (
 	"fmt"
 	"path/filepath"
 	"sort"
+	"sync"
 
 	"github.com/Masterminds/semver/v3"
 )
+
+var mu sync.Mutex
 
 func InstallPackage(name, version string, lock map[string]LockedDependency, force bool) error {
 	if !force {
@@ -37,10 +40,12 @@ func InstallPackage(name, version string, lock map[string]LockedDependency, forc
 		return err
 	}
 
+	mu.Lock()
 	lock[name] = LockedDependency{
 		Version:  version,
 		Resolved: tarballURL,
 	}
+	mu.Unlock()
 
 	// Create .bin executables
 	if err := CreateBinLinks(dest); err != nil {
